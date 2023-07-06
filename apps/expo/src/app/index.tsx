@@ -1,135 +1,133 @@
-import React from "react";
-import { Button, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { Stack, useRouter } from "expo-router";
-import { FlashList } from "@shopify/flash-list";
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Dimensions, View, TextInput, FlatList, Text, SafeAreaView, TouchableHighlight } from 'react-native';
 
-import { api, type RouterOutputs } from "~/utils/api";
+import Svg, {Path} from "react-native-svg";
+import * as Speech from 'expo-speech';
 
-function PostCard(props: {
-  post: RouterOutputs["post"]["all"][number];
-  onDelete: () => void;
-}) {
-  const router = useRouter();
+import { getRedditFrontPagePosts, loadMorePosts } from '~/utils/reddit';
+import RedditCard from '~/components/post';
 
-  return (
-    <View className="flex flex-row rounded-lg bg-white/10 p-4">
-      <View className="flex-grow">
-        <TouchableOpacity onPress={() => router.push(`/post/${props.post.id}`)}>
-          <Text className="text-xl font-semibold text-pink-400">
-            {props.post.title}
-          </Text>
-          <Text className="mt-2 text-white">{props.post.content}</Text>
-        </TouchableOpacity>
-      </View>
-      <TouchableOpacity onPress={props.onDelete}>
-        <Text className="font-bold uppercase text-pink-400">Delete</Text>
-      </TouchableOpacity>
-    </View>
+
+const MainPage = () => {
+  const [loading, setLoading] = useState(true);
+  const [subreddit, setSubreddit] = useState('twosentencehorror');
+  const [subredditInput, setSubredditInput] = useState('twosentencehorror');
+  const [posts, setPosts] = useState([]);
+  const [after, setAfter] = useState('');
+  const [currentPost, setCurrentPost] = useState(0);
+
+  const LIST_VIEW_HEIGHT = Dimensions.get("window").height - 124;
+
+
+  const readCurrentPost = () => {
+    // Interrupt the current speech.
+    Speech.stop();
+    
+    // Read the current post.
+    Speech.speak(posts[currentPost].title + ' ' + posts[currentPost].body);
+  }
+
+  const readCurrentPostCallback = (viewableItems)=> {
+    if (viewableItems.length > 0) {
+      window.alert(`Current index: ${viewableItems[0].index}`)
+      setCurrentPost(viewableItems[0].index);
+      readCurrentPost();
+    } else {
+      window.alert('No items in view');
+    }
+  }
+
+  const viewabilityConfigCallbackPairs = useRef([
+    { readCurrentPostCallback },
+  ]);
+
+
+  useEffect(() => {
+    fetchRedditPosts(subreddit).then(() => {
+      setLoading(false);
+      readCurrentPost();
+    });
+  }, [subreddit]);
+
+  const fetchRedditPosts = async (subreddit) => {
+    const newPosts = await getRedditFrontPagePosts(subreddit);
+    setPosts(newPosts);
+    setLoading(false);
+  };
+
+  const fetchMorePosts = async () => {
+    setLoading(true);
+    const newPosts = await loadMorePosts(subreddit, after);
+    setPosts([...posts, ...newPosts]);
+    setAfter(newPosts[newPosts.length - 1].id);
+  };
+
+  const handleChangeSubreddit = (newSubreddit) => {
+    setLoading(true);
+    setSubreddit(newSubreddit);
+  };
+
+  const renderItem = ({ item }) => (
+    <RedditCard post={item} height={LIST_VIEW_HEIGHT} isActive={true} />
   );
-}
-
-function CreatePost() {
-  const utils = api.useContext();
-
-  const [title, setTitle] = React.useState("");
-  const [content, setContent] = React.useState("");
-
-  const { mutate, error } = api.post.create.useMutation({
-    async onSuccess() {
-      setTitle("");
-      setContent("");
-      await utils.post.all.invalidate();
-    },
-  });
 
   return (
-    <View className="mt-4">
-      <TextInput
-        className="mb-2 rounded bg-white/10 p-2 text-white"
-        placeholderTextColor="rgba(255, 255, 255, 0.5)"
-        value={title}
-        onChangeText={setTitle}
-        placeholder="Title"
-      />
-      {error?.data?.zodError?.fieldErrors.title && (
-        <Text className="mb-2 text-red-500">
-          {error.data.zodError.fieldErrors.title}
-        </Text>
-      )}
-      <TextInput
-        className="mb-2 rounded bg-white/10 p-2 text-white"
-        placeholderTextColor="rgba(255, 255, 255, 0.5)"
-        value={content}
-        onChangeText={setContent}
-        placeholder="Content"
-      />
-      {error?.data?.zodError?.fieldErrors.content && (
-        <Text className="mb-2 text-red-500">
-          {error.data.zodError.fieldErrors.content}
-        </Text>
-      )}
-      <TouchableOpacity
-        className="rounded bg-pink-400 p-2"
-        onPress={() => {
-          mutate({
-            title,
-            content,
-          });
-        }}
-      >
-        <Text className="font-semibold text-white">Publish post</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
+    <View className="bg-black">
+      <SafeAreaView className="flex flex-col">
+        <View className="flex flex-row items-center p-2">
+          <TextInput
+            placeholder="Enter Subreddit"
+            className="bg-neutral-800 border-neutral-900 flex-1 p-2 rounded-md text-white placeholder-white"
+            value={subredditInput}
+            autoCorrect={false}
+            autoCapitalize="none"
+            onChangeText={setSubredditInput}
+            onSubmitEditing={() => handleChangeSubreddit(subredditInput)}
+          />
 
-const Index = () => {
-  const utils = api.useContext();
-
-  const postQuery = api.post.all.useQuery();
-
-  const deletePostMutation = api.post.delete.useMutation({
-    onSettled: () => utils.post.all.invalidate(),
-  });
-
-  return (
-    <SafeAreaView className="bg-[#1F104A]">
-      {/* Changes page title visible on the header */}
-      <Stack.Screen options={{ title: "Home Page" }} />
-      <View className="h-full w-full p-4">
-        <Text className="mx-auto pb-2 text-5xl font-bold text-white">
-          Create <Text className="text-pink-400">T3</Text> Turbo
-        </Text>
-
-        <Button
-          onPress={() => void utils.post.all.invalidate()}
-          title="Refresh posts"
-          color={"#f472b6"}
-        />
-
-        <View className="py-2">
-          <Text className="font-semibold italic text-white">
-            Press on a post
-          </Text>
+          <TouchableHighlight onPress={() => handleChangeSubreddit(subredditInput)}>
+            <View className="w-12 h-12 flex items-center justify-center">
+              <Svg
+                xmlns="http://www.w3.org/2000/svg"
+                height={24}
+                width={24}
+                viewBox="0 0 512 512"
+                fill={'white'}
+              >
+                <Path d="M416 208c0 45.9-14.9 88.3-40 122.7l126.6 126.7c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0s208 93.1 208 208zM208 352a144 144 0 1 0 0-288 144 144 0 1 0 0 288z" />
+              </Svg>
+            </View>
+          </TouchableHighlight>
         </View>
+        {loading && (
+          <View className="flex-1 flex items-center justify-center">
+            <Text className="text-white">Loading...</Text>
+          </View>
+        )}
+        {!loading && (
+        <FlatList
+          data={posts}
+          renderItem={renderItem}
+          keyExtractor={(item) => item.id}
+          onEndReached={fetchMorePosts}
+          onEndReachedThreshold={0.1}
+          showsVerticalScrollIndicator={false}
+          snapToAlignment={"start"}
+          snapToInterval={Dimensions.get("window").height - 124}
+          decelerationRate={0.0}
+          pagingEnabled={true}
+          disableIntervalMomentum={true}
+          windowSize={3}
 
-        <FlashList
-          data={postQuery.data}
-          estimatedItemSize={20}
-          ItemSeparatorComponent={() => <View className="h-2" />}
-          renderItem={(p) => (
-            <PostCard
-              post={p.item}
-              onDelete={() => deletePostMutation.mutate(p.item.id)}
-            />
-          )}
+          // When an item is scrolled into view, read it.
+          viewabilityConfig={{viewAreaCoveragePercentThreshold: 50}}
+          // viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs.current}
+          onViewableItemsChanged={readCurrentPostCallback}
         />
-
-        <CreatePost />
-      </View>
-    </SafeAreaView>
+        )}
+      </SafeAreaView>
+    </View>
   );
 };
 
-export default Index;
+export default MainPage;

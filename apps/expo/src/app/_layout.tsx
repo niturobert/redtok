@@ -9,7 +9,6 @@ import { TRPCProvider } from "~/utils/api";
 // It wraps your pages with the providers they need
 const RootLayout = () => {
   return (
-    <TRPCProvider>
       <SafeAreaProvider>
         {/*
           The Stack component displays the current page.
@@ -20,11 +19,11 @@ const RootLayout = () => {
             headerStyle: {
               backgroundColor: "#f472b6",
             },
+            headerShown: false,
           }}
         />
         <StatusBar />
       </SafeAreaProvider>
-    </TRPCProvider>
   );
 };
 
